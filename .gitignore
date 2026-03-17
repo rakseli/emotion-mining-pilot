@@ -17,4 +17,8 @@ venv.bak/
 logs/
 data/
 results/
-scripts/
+scripts/triton_cache/
+scripts/vllm_cache/
+scripts/torch_inductor_cache/
+
+
