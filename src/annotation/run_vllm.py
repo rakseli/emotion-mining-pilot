@@ -202,7 +202,7 @@ def data_generator(data_files):
         
 def create_dataloader(args):
     num_workers = int(os.getenv("SLURM_CPUS_PER_TASK",1))
-    num_workers = num_workers-1 
+    num_workers = num_workers-1 if num_workers>1 else 1
     if not os.path.isdir(args.root_path):
         data_files = [args.root_path]
     else:
@@ -215,7 +215,7 @@ def create_dataloader(args):
 
 def format_data(example,tokenizer,args):
     user = {"role": "user", "content":prompt_template.format(note=example["text"])}
-    if "gpt-oss-120b" in args.model_path:
+    if "gpt-oss" in args.model_path:
         example['text'] = tokenizer.apply_chat_template([user],tokenize=False,reasoning_effort="low")
     else:
         system = {"role": "system", "content":generic_system_prompt}
@@ -244,7 +244,7 @@ if __name__ == "__main__":
         gpu_mem=0.5
         enforce_eager = True
         batch_size = 2
-    elif "gpt-oss-120" in model_name:
+    elif "gpt-oss" in model_name:
         temperature = 1
         top_p = 1
         top_k = 1
@@ -254,12 +254,13 @@ if __name__ == "__main__":
         batch_size = 4
     else:
         raise ValueError(f"llama or gpt models should be used, {args.model_path} given")
-    llm = LLM(model=args.model_path,tensor_parallel_size=4,
+    llm = LLM(model=args.model_path,tensor_parallel_size=1,
               max_num_seqs=batch_size,distributed_executor_backend="mp",
               disable_custom_all_reduce=True,
               max_model_len=32000,gpu_memory_utilization=gpu_mem,
               enable_chunked_prefill=True,quantization=quantization,
-              enforce_eager=enforce_eager)
+              enforce_eager=enforce_eager,
+            )
     
     sampling_params = SamplingParams(
                 temperature=temperature,
@@ -267,11 +268,10 @@ if __name__ == "__main__":
                 top_k=top_k,
                 max_tokens=250,
                 min_tokens=10,
-                truncate_prompt_tokens=4096,
                 seed=SEED,
                 presence_penalty=0.8,
-                stop_token_ids=[eos_id]
-                )
+                stop_token_ids=[eos_id],
+                extra_args={'truncate_prompt_tokens':4069} )
     total_tokens = 0
     start = time.time()
     proccessed_prompts = 0
