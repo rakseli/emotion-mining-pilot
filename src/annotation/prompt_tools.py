@@ -1,10 +1,14 @@
 import numpy as np
+import json
 from dataclasses import dataclass
 from typing import Dict, Any, List, Optional
 
 # ----------------------------
-# Sampling utilities (Finland 2024-calibrated where given)
+# Sampling utilities
 # ----------------------------
+
+_EXAMPLE_PATH="/scratch/project_2017000/emotion-mining-pilot/data/example_notes_with_structural_data_False.jsonl"
+
 
 def choice_weighted(rng: np.random.Generator, values, probs):
     probs = np.asarray(probs, dtype=float)
@@ -21,23 +25,20 @@ def clipped_normal(rng: np.random.Generator, mean: float, sd: float, low: float,
 def sample_age(rng: np.random.Generator) -> int:
     """
     Age distribution:
-      0–14: 14.6%
-      15–64: 61.9%
-      65–84: 20.6%
-      85+: 3.0%
+      18–64: 20%
+      65–84: 70%
+      85+: 10%
     Within-bin: uniform integer (simple, transparent).
     """
     bin_name = choice_weighted(
         rng,
-        values=np.array(["0-14", "15-64", "65-84", "85+"]),
-        probs=np.array([0.146, 0.619, 0.206, 0.030]),
+        values=np.array(["18-64", "65-84", "85+"]),
+        probs=np.array([0.20, 0.70, 0.1]),
     )
-    if bin_name == "0-14":
-        return int(rng.integers(0, 15))
-    if bin_name == "15-64":
-        return int(rng.integers(15, 65))
+    if bin_name == "18–64":
+        return int(rng.integers(18, 64))
     if bin_name == "65-84":
-        return int(rng.integers(65, 85))
+        return int(rng.integers(65, 84))
     return int(rng.integers(85, 101))  # cap at 100 for plausibility
 
 def sample_sex(rng: np.random.Generator) -> str:
@@ -89,15 +90,13 @@ def sample_education(rng: np.random.Generator, age: int) -> Optional[str]:
 
 def sample_employment(rng: np.random.Generator, age: int, sex: str) -> Optional[bool]:
     # Employment rate (ages 20–64): men 76.8%, women 76.6%
-    if age < 20 or age > 64:
+    if age > 64:
         return None
     p = 0.768 if sex == "male" else 0.766
     return bernoulli(rng, p)
 
 def sample_smoking(rng: np.random.Generator, age: int, sex: str) -> bool:
     # Daily smoking: 10% overall (men 11%, women 9%)
-    if age < 12:
-        return False
     p = 0.11 if sex == "male" else 0.09
     # slightly lower in >=75 as a pragmatic cohort effect; keep simple
     if age >= 75:
@@ -109,22 +108,14 @@ def sample_bmi(rng: np.random.Generator, age: int, sex: str) -> float:
     Target: obesity (BMI>=30) ~24.5% of adults.
     Use a simple two-component mixture for adults; pediatric uses lower mean.
     """
-    if age < 18:
-        return float(np.round(clipped_normal(rng, mean=18.0 + 0.12 * age, sd=2.2, low=13.0, high=35.0), 1))
     obese = bernoulli(rng, 0.245)
     if obese:
-        bmi = clipped_normal(rng, mean=33.5, sd=3.2, low=30.0, high=50.0)
+        bmi = clipped_normal(rng, mean=33.5, sd=3.2, low=28.0, high=50.0)
     else:
-        bmi = clipped_normal(rng, mean=26.0, sd=3.4, low=18.0, high=29.9)
+        bmi = clipped_normal(rng, mean=24.0, sd=3.4, low=18.0, high=28.0)
     return float(np.round(bmi, 1))
 
 def sample_height_cm(rng: np.random.Generator, age: int, sex: str) -> float:
-    # Roughly plausible: adults sex-specific; children age-based growth curve (simple)
-    if age < 18:
-        # very simplified growth: 50 cm newborn -> ~175/162 cm at 18
-        target = 175.0 if sex == "male" else 162.0
-        mean = 50.0 + (target - 50.0) * (age / 18.0)
-        return float(np.round(clipped_normal(rng, mean=mean, sd=6.0, low=45.0, high=200.0), 1))
     mean = 179.0 if sex == "male" else 165.0
     return float(np.round(clipped_normal(rng, mean=mean, sd=7.0, low=145.0, high=205.0), 1))
 
@@ -135,8 +126,6 @@ def bmi_to_weight_kg(bmi: float, height_cm: float) -> float:
 
 def sample_diabetes(rng: np.random.Generator, age: int, bmi: float) -> bool:
     # Calibrated loosely: higher with age and obesity; kept simple and plausible
-    if age < 18:
-        return bernoulli(rng, 0.004)  # mostly type 1 uncommon
     base = 0.03 + 0.0025 * max(age - 35, 0)  # increases with age
     if bmi >= 30:
         base *= 2.2
@@ -157,8 +146,9 @@ def sample_allergies(rng: np.random.Generator) -> List[str]:
         return []
     options = np.array([
         "No known drug allergies (NKDA)",  # occasionally documented explicitly
-        "Penicillin (rash)",
-        "ACE inhibitor (cough)",
+        "Penicillin",
+        "ACE inhibitor",
+        "Cephalosporins",
         "Latex",
         "Iodinated contrast (urticaria)",
         "NSAIDs (angioedema)",
@@ -170,7 +160,7 @@ def sample_allergies(rng: np.random.Generator) -> List[str]:
 def sample_chronic_conditions(rng: np.random.Generator, age: int, sex: str, bmi: float, diabetes: bool) -> List[str]:
     conds = []
     # Hypertension more common with age and BMI
-    p_htn = 0.06 if age < 30 else 0.18 + 0.006 * (age - 40 if age > 40 else 0)
+    p_htn = 0.18 + 0.006 * (age - 40 if age > 40 else 0)
     if bmi >= 30:
         p_htn *= 1.4
     if bernoulli(rng, float(np.clip(p_htn, 0.05, 0.70))):
@@ -185,57 +175,93 @@ def sample_chronic_conditions(rng: np.random.Generator, age: int, sex: str, bmi:
     p_ckd = 0.01 + 0.002 * max(age - 60, 0)
     if bernoulli(rng, float(np.clip(p_ckd, 0.0, 0.18))):
         conds.append("Chronic kidney disease, stage 2–3 (N18)")
+    #Schizophrenia
+    p_sch = 0.015
+    if bernoulli(rng, p_sch):
+        conds.append("schizophrenia")
     return conds
 
 def sample_family_status(rng: np.random.Generator, household_size: int, age: int) -> Dict[str, Any]:
     # "70% belongs to a family; 37% of families have minor children"
-    belongs_to_family = bernoulli(rng, 0.70) if age >= 18 else True
+    belongs_to_family = bernoulli(rng, 0.70)
     has_minor_children = False
-    if belongs_to_family and age >= 18 and household_size >= 2:
+    if belongs_to_family and household_size >= 2:
         has_minor_children = bernoulli(rng, 0.37)
     return {"belongs_to_family": belongs_to_family, "has_minor_children": has_minor_children}
 
 def sample_example(seed: int) -> str:
     rng = np.random.default_rng(seed)
-    examples = ["Aijjai kun sattuu", "On kipua ja sydän pysähtyy"]
+    examples = []
+    with open(_EXAMPLE_PATH) as f:
+        for line in f:
+            d = json.loads(line)
+            examples.append(d['text'])
+
     return rng.choice(examples)
 
 def sample_adverse_event(rng: np.random.Generator) -> Optional[Dict[str, Any]]:
-    # ~10% ±2%: use 10% exactly here
+    # use 50%
     preventable_adverse_events = [
         "Delayed medication administration",
+        "Wrong dose",
+        "Wrong medication",
+        "Failure in equipment usage",
+        "Equipment malfunction",
         "Drug interactions",
         "Documentation error",
+        "Breakdown in communication",
+        "Pressure ulcers",
+        "Fall",
     ]
-
     random_adverse_events = [
         "Hospital-acquired infection",
-        "Hematuria",
         "IV infiltration",
-        "Access-site bleeding",
-        "Worsening heart failure",
-        "Pneumonia",
-        "Complications from recent procedural sites",
-        "Delirium",
-        "Sleep disruption",
-        "Agitation or aggression related to pain",
-        "Agitation or aggression related to withdrawal",
-        "Agitation or aggression related to anxiety",
+        "Hospital aquired pneumonia",
+        "Agitation or aggression related to pain, withdrawal or anxiety",
+        "Agitation or aggression related to delirium",
+        "Agitation or aggression related to sleep distruption",
+        "Agitation or aggression related to close relative or visitor actions",
+        "Agitation or aggression related to trust",
+        "Agitation or aggression related to feeling not being heard",
+        "Agitation or aggression related to feeling not being not being valued",
+        "Patient dissatisfaction based in perceived competency of health professional",
+        "Patient dissatisfaction based in that they felt they were treated incorrectly",
+        "Patient dissatisfaction based in perceived amount of caring",
+        "Patient dissatisfaction based in perceived long waiting time",
+        "Patient dissatisfaction based in perceived amount of caring",
+        "Patient dissatisfaction based in perceived long discharge process",
+        "Patient dissatisfaction based in feeling not being heard",
+        "Patient dissatisfaction based in feeling not being valued"
     ]
 
     all_adverse_events = preventable_adverse_events + random_adverse_events
     if not bernoulli(rng, 0.50):
         return None
 
-    # Sample adverse outcome uniformly from the list
-    event = rng.choice(all_adverse_events)
+    # Sample number of adverse outcome combinations uniformly from the list
+    n_events = rng.choice([1,2,3])
+    all_events = []
+    for i in range(n_events):
+        e = rng.choice(all_adverse_events)
+        all_events.append(e)
+        all_adverse_events.remove(e)
 
-    preventable = bernoulli(rng, 0.75 if event in preventable_adverse_events else 0.25)
+    if len(all_events)>1:
+        all_preventable = []
+        for e in all_events:
+            p = bernoulli(rng, 0.75 if e in preventable_adverse_events else 0.25)
+            all_preventable.append(str(p))
+        preventable = ", ".join(all_preventable)
+        event = " and ".join(all_events)
+    else:
+        preventable = bernoulli(rng, 0.75 if all_events[0] in preventable_adverse_events else 0.25)
+        event = all_events[0]
+
 
     # Sample severity uniformly from the list
     severities = ["mild", "moderate", "severe"]
     severity = rng.choice(severities)
-
+    
     return {"event": event, "severity": severity, "preventable": preventable}
 
 # ----------------------------
@@ -338,16 +364,24 @@ def build_prompt_with_sampling(seed: Optional[int] = None) -> str:
     )
 
     prompt = f"""
-You are a medical language model whose task is to create realistic, complete synthetic electronic health records (EHRs) for cardiac patients treated in Finnish university hospitals.
+# Introduction
+
+You are a medical language model whose task is to create realistic, complete synthetic electronic health records (EHRs) in Finnish for cardiac patients treated in Finnish university hospitals.
 
 Your task is to generate each case as a comprehensive, multidisciplinary EHR that is consistent with:
 - Current Finnish and European clinical guidelines
 - Evidence-based practice
 - Nationally reported health statistics and population data (updated 2024)
-- Maximally 32K words
+- The EHR must be fully in Finnish
+- Include the sampled adverse event to the story
+- Follow strictly the text format given in the note example (example given in section)
+- Do not include any term-mentions from these insturctions such as Käypä-hoito and NOMESCO
+
 The generated records will be used to build and test AI systems, and they must be fully synthetic, de-identified, and epidemiologically and clinically plausible.
 
-1. Demographic and social profile (sampled)
+## Patient profile
+
+### Demographic and social profile (sampled)
 - Age: {p.age} years
 - Sex: {p.sex}
 - Mother tongue: {p.mother_tongue}
@@ -356,47 +390,51 @@ The generated records will be used to build and test AI systems, and they must b
 - Household size: {p.household_size}
 - Family situation: {family_str}
 - Education: {edu_str}
-- Employment status (20–64 only): {employed_str}
+- Employment status (18–64 only): {employed_str}
 
-Lifestyle and cardiovascular risk factors (sampled)
+### Lifestyle and cardiovascular risk factors (sampled)
+
 - Daily smoking: {p.smoking_daily}
 - BMI: {p.bmi} kg/m^2 (obesity if >=30)
 - Height: {p.height_cm} cm
 - Weight: {p.weight_kg} kg
 - Diabetes: {p.diabetes}
 
-Other sampled background
+### Other sampled background
+
 - Vaccination status: {vacc_str}
 - Allergies: {allergies_str}
 - Chronic diseases: {chronic_str}
 
-2. Clinical documentation 
-Create a full electronic patient record that includes:
-    - Physician documentation
-    - Admission note
-    - Reason for admission, history of present illness, past medical history, medications, family/social history, physical examination
-    - Use a structured SOAP format (Subjective, Objective, Assessment, Plan)
-    - Progress notes (1–3 notes)
-    - Daily assessments, clinical course, treatment updates
-    - Discharge summary
-    - Final ICD-10 diagnoses, hospitalization summary, procedures, outcome, discharge plan, follow-up
-    - Diagnostics
-    - Laboratory results (CBC, CRP, electrolytes, cardiac enzymes, BNP, troponin, lipids, blood glucose, HbA1c) — use age- and sex-specific reference ranges
-    - Radiology (e.g., chest X-ray, echocardiography, CT angiography, coronary angiography)
-    - Other tests: ECG, stress test, Holter monitoring, cardiac MRI as needed
-    - Nursing notes
-    - Integrate nursing notes as part of the clinical foundation
-    - Ensure consistency with physician and other healthcare professional documentation
-    - Include assessments, interventions, medication administration, fluid balance, cardiac monitoring, care planning
-    - Documentation by other healthcare professionals
-    - As needed for the case, include:
-        - Physiotherapy: post-myocardial infarction mobilization, cardiac rehabilitation
-        - Psychology: anxiety, depression, fear, anger, sadness related to threatment or events
-        - Social work: family counseling, sick leave, discharge planning
-        - Dietitian: counseling on a heart-healthy diet, diabetes management, weight loss strategies
+## EHR formulation
 
+The generated EHRs should contain:
+- Be in Finnish
+- Physician documentation
+- Admission note
+- Reason for admission, history of present illness, past medical history, medications, family/social history, physical examination
+- Use a structured SOAP format (Subjective, Objective, Assessment, Plan)
+- Progress notes (1–3 notes)
+- Daily assessments, clinical course, treatment updates
+- Discharge summary
+- Final ICD-10 diagnoses, hospitalization summary, procedures, outcome, discharge plan, follow-up
+- Diagnostics
+- Laboratory results (CBC, CRP, electrolytes, cardiac enzymes, BNP, troponin, lipids, blood glucose, HbA1c) — use age- and sex-specific reference ranges
+- Radiology (e.g., chest X-ray, echocardiography, CT angiography, coronary angiography)
+- Other tests: ECG, stress test, Holter monitoring, cardiac MRI as needed
+- Nursing notes
+- Integrate nursing notes as part of the clinical foundation
+- Ensure consistency with physician and other healthcare professional documentation
+- Include assessments, interventions, medication administration, fluid balance, cardiac monitoring, care planning
+- Documentation by other healthcare professionals
+- As needed for the case, include:
+    - Physiotherapy: post-myocardial infarction mobilization, cardiac rehabilitation
+    - Psychology: anxiety, depression, fear, anger, sadness related to threatment or events
+    - Social work: family counseling, sick leave, discharge planning
+    - Dietitian: counseling on a heart-healthy diet, diabetes management, weight loss strategies
+    - Note: very often a nurse or phycisian must provide the support as specialist may not be available nor should address common problems such as mild anxiety
 
-3. Care statistics and population-based models
+- Adverse event(s): {adverse_str}
 Link the generated records to Finland’s epidemiological data:
     - Hospitalization rates: for adults, hospitalizations due to heart disease reflect the high prevalence of cardiovascular disease (32% of mortality)
     - Common cardiac conditions to simulate:
@@ -406,9 +444,6 @@ Link the generated records to Finland’s epidemiological data:
         - Congenital heart disease (in pediatric cases)
         - Hypertension and related complications
 
-Risk factors: smoking, obesity, diabetes, family history of heart disease
-
-4. Evidence-based, guideline-concordant care
 All care must follow:
     - Finnish Käypä hoito guidelines
     - European Society of Cardiology (ESC) guidelines
@@ -417,31 +452,32 @@ Examples:
     - STEMI: immediate reperfusion (preferably PCI), dual antiplatelet therapy, statins, ACE inhibitors/ARBs, beta-blockers
     - Heart failure: ACE inhibitors/ARNI, beta-blockers, MRAs, SGLT2 inhibitors, device therapy as needed
     - Arrhythmias: guideline-based anticoagulation in AF treatment, rate vs. rhythm control
-    - Pediatric congenital heart disease: follow ESPGHAN/ESC pediatric guidelines
 Use coding systems:
     - ICD-10 for diagnoses
     - ATC codes for medications
     - NOMESCO for procedures
 
-5. Style and formatting
-Combine structured and narrative documentation:
+## Style and formatting
+All EHRs must:
     - Mimic Finnish EHR formatting (short section headers, SOAP notes, standardized lab formats)
-    - Ensure internal consistency: symptoms ↔ physical exam ↔ labs ↔ diagnoses ↔ treatments ↔ discharge
+    - Ensure internal consistency: symptoms &rarr; physical exam &rarr; labs &rarr; diagnoses &rarr; treatments &rarr; discharge
     - Use a concise, clinically precise style
-    - Instructions
-    - All data must be synthetic, anonymized, and population-calibrated
-    - Include realistic demographic details, cardiac risk profiles, and clinical care pathways
-    - Ensure the outputs are suitable for training and evaluating a clinical NLP model
-
-EXAMPLE: 
+    - All data must be synthetic
+    - Include realistic cardiac risk profiles and clinical care pathways
+    - Follow strictly the text format given in the note example (date,time,heading,free text)
+    - insert the adverse event to note if specified &rarr; the adverse event may effect the mood of the patient, the content of progress notes, daily assessments, clinical course and treatment updates
+### Example
 <<<
 {example}
 >>>
+### Output format
 
-6. Adverse events (sampled occurrence)
-Adverse event this case: {adverse_str}
+Output the EHR in the following format:
 
-Generated PATIENT RECORD:
+# Generated EHR
+
+<the generated EHR in Finnish>
+
 """.strip()
 
     return prompt
@@ -520,4 +556,5 @@ emotion_prompt_template = """
 
 if __name__ == "__main__":
     # Example usage: deterministic prompt
-    print(build_prompt_with_sampling(seed=np.random.randint(1,100)))
+    for i in range(10):
+        print(build_prompt_with_sampling(seed=i+2))
