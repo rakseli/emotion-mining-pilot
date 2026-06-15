@@ -236,7 +236,7 @@ def sample_adverse_event(rng: np.random.Generator) -> Optional[Dict[str, Any]]:
     ]
 
     all_adverse_events = preventable_adverse_events + random_adverse_events
-    if not bernoulli(rng, 0.50):
+    if not bernoulli(rng, 0.75):
         return None
 
     # Sample number of adverse outcome combinations uniformly from the list
