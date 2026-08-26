@@ -377,11 +377,11 @@ Your task is to generate three progress notes that is consistent with:
 - The progess notes must be fully in Finnish
 - Include the sampled adverse event to the progress notes
 - Follow strictly the text format given in the note example (example given in section)
-- Do not include any term-mentions from these insturctions such as Käypä-hoito, NOMESCO or Adverse event
+- Do not include any term-mentions from these insturctions such as "Käypä-hoito" or "Adverse event"
 - Add mentions only from occured events e.g if patient do not have diabetes the note should not write "no diabetes".
 - Use the Patient profile as context for the progress notes
 
-The generated progress notes will be used to build and test AI systems, and they must be fully synthetic, de-identified, and epidemiologically and clinically plausible.
+The generated progress notes will be used to build and test AI systems, and they must be fully simulated, de-identified, and epidemiologically and clinically plausible.
 ## Patient profile
 
 ### Demographic and social profile (sampled)
@@ -435,17 +435,13 @@ Examples:
     - STEMI: immediate reperfusion (preferably PCI), dual antiplatelet therapy, statins, ACE inhibitors/ARBs, beta-blockers
     - Heart failure: ACE inhibitors/ARNI, beta-blockers, MRAs, SGLT2 inhibitors, device therapy as needed
     - Arrhythmias: guideline-based anticoagulation in AF treatment, rate vs. rhythm control
-Use coding systems:
-    - ICD-10 for diagnoses
-    - ATC codes for medications
-    - NOMESCO for procedures
 
 ## Style and formatting
 All Progress notes must:
     - Mimic Finnish progress note formatting (short section headers, SOAP notes, standardized lab formats)
     - Ensure internal consistency: symptoms &rarr; physical exam &rarr; labs &rarr; diagnoses &rarr; treatments
     - Use a concise, clinically precise style
-    - All data must be synthetic
+    - All data must be simulated
     - Contain exactly three progress notes
     - Follow strictly the text format given in the note example (date,time,heading,free text)
     - Insert the adverse event to note if specified &rarr; the adverse event may effect the mood of the patient, the content of progress notes, assessments, clinical course and treatment updates
@@ -459,7 +455,7 @@ Output the Progress notes in the following format:
 
 # Generated Progress notes
 
-<the generated progress notes  in Finnish>
+<the generated progress notes in Finnish>
 
 """.strip()
 
