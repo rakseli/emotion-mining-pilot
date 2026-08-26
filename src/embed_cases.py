@@ -52,43 +52,64 @@ def make_case_id(source_file: str, record_index: int, case_index: int) -> str:
     return f"{base}_rec{record_index}_case{case_index}"
 
 
-def farthest_point_sampling(cases: list[tuple], z: int, metric='cosine') -> list:
+def farthest_point_sampling(
+    cases: list[tuple],
+    z: int,
+    metric: str = 'cosine',
+    outlier_pct: float = 0.10,
+) -> set:
     """
-    Select z maximally diverse cases using greedy FPS.
+    Select z maximally diverse cases
+    after discarding the top `outlier_pct` most distant cases from the centroid.
 
     Args:
         cases: list of (case_id, embedding) tuples
         z: number of cases to select
         metric: distance metric ('euclidean', 'cosine', etc.)
+        outlier_pct: fraction of farthest-from-centroid cases to exclude
 
     Returns:
-        List of selected case_ids
+        Set of selected case_ids
     """
     case_ids, embeddings = zip(*cases)
     case_ids = list(case_ids)
     vectors = np.array(embeddings)
     n = vectors.shape[0]
-    assert z <= n
 
-    # Start with the vector closest to the centroid
+    centroid = vectors.mean(axis=0, keepdims=True)
+    dists_to_centroid = cdist(vectors, centroid, metric=metric).flatten()
+
+    cutoff = np.percentile(dists_to_centroid, (1 - outlier_pct) * 100)
+    keep_mask = dists_to_centroid <= cutoff
+
+    kept_indices = np.where(keep_mask)[0]
+    vectors = vectors[kept_indices]
+    case_ids = [case_ids[i] for i in kept_indices]
+    n = vectors.shape[0]
+
+    assert z <= n, (
+        f"After removing top {outlier_pct:.0%} outliers, only {n} cases "
+        f"remain but z={z} were requested."
+    )
+
+    # Seed with the vector closest to centroid (recompute on filtered set)
     centroid = vectors.mean(axis=0, keepdims=True)
     dists_to_centroid = cdist(vectors, centroid, metric=metric).flatten()
     first_idx = np.argmin(dists_to_centroid)
 
     selected_indices = [first_idx]
 
-    # min_dists[i] = min distance from vector i to any selected vector
-    min_dists = cdist(vectors, vectors[first_idx:first_idx+1], metric=metric).flatten()
+    min_dists = cdist(vectors, vectors[first_idx:first_idx + 1], metric=metric).flatten()
     min_dists[first_idx] = -np.inf
 
     for _ in range(z - 1):
         next_idx = np.argmax(min_dists)
         selected_indices.append(next_idx)
-        new_dists = cdist(vectors, vectors[next_idx:next_idx+1], metric=metric).flatten()
+        new_dists = cdist(vectors, vectors[next_idx:next_idx + 1], metric=metric).flatten()
         min_dists = np.minimum(min_dists, new_dists)
         min_dists[next_idx] = -np.inf
-    ids = set([case_ids[i] for i in selected_indices])
-    return ids
+
+    return {case_ids[i] for i in selected_indices}
 
 
 def main():
@@ -122,7 +143,7 @@ def main():
     
     output_embeddings_path =  os.path.join(os.path.dirname(args.input_path),f"{os.path.basename(args.input_path)[:-6]}_embeddings.pkl")
     output_texts_path = os.path.join(os.path.dirname(args.input_path),f"{os.path.basename(args.input_path)[:-6]}_all_texts.jsonl")
-    output_selected_text_path = os.path.join(os.path.dirname(args.input_path),f"{os.path.basename(args.input_path)[:-6]}_maximally_different_texts.jsonl")
+    output_selected_text_path = os.path.join(os.path.dirname(args.input_path),f"{os.path.basename(args.input_path)[:-6]}_different_texts.jsonl")
     should_compute = True
     if os.path.exists(output_embeddings_path):
         print(f"Embeddings already computed ({output_embeddings_path})")
@@ -190,7 +211,7 @@ def main():
                 except json.JSONDecodeError as e:
                     raise ValueError(f"Invalid JSON in {output_texts_path}:{e}") from e
     
-    selected_ids = farthest_point_sampling(case_embeddings, z=20, metric='cosine')
+    selected_ids = farthest_point_sampling(case_embeddings, z=1000, metric='cosine')
     with open(output_selected_text_path,"w") as f:
         for c in case_texts:
             if c['id'] in selected_ids:
