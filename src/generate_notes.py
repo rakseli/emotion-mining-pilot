@@ -81,7 +81,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path",type=str,default="/scratch/project_2018556/models/Qwen3.5-122B-A10B-GPTQ-Int4")
     parser.add_argument("--output_path",type=str,default="/scratch/project_2017000/emotion-mining-pilot/results")
-    parser.add_argument("--n_notes",default=10000,help="number of prompts to generate")
+    parser.add_argument("--n_notes",default=5000,help="number of prompts to generate")
     parser.add_argument("--run_name",default=None)
     parser.add_argument("--example_path",default=None)
     parser.add_argument("--exit_duration_in_mins",type=int, default=None, help="exit duration")
