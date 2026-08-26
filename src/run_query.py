@@ -19,8 +19,8 @@ def create_dataloader(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root_path",default="/scratch/project_2017000/emotion-mining-pilot/data/generated_llama3.1-8b_fewshot_sample_ids.jsonl",type=str,help="path to source file")
-    parser.add_argument("--output_path",type=str,default="/scratch/project_2017000/emotion-mining-pilot/results")
+    parser.add_argument("--root_path",default="/scratch/<project_name>/emotion-mining-pilot/data/generated_llama3.1-8b_fewshot_sample_ids.jsonl",type=str,help="path to source file")
+    parser.add_argument("--output_path",type=str,default="/scratch/<project_name>/emotion-mining-pilot/results")
     parser.add_argument("--test",action="store_true")
     args = parser.parse_args()
     if args.test:

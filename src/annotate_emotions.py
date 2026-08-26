@@ -106,9 +106,9 @@ def format_data(example,tokenizer,prompt_template,args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path",default="/scratch/project_2017000/models/gpt-oss-120b",type=str)
-    parser.add_argument("--input_path",default="/scratch/project_2017000/emotion-mining-pilot/data/generated_llama3.1-8b_fewshot_sample_ids.jsonl",type=str,help="path to source file")
-    parser.add_argument("--output_path",type=str,default="/scratch/project_2017000/emotion-mining-pilot/results")
+    parser.add_argument("--model_path",default="/scratch/<project_name>/models/gpt-oss-120b",type=str)
+    parser.add_argument("--input_path",default="/scratch/<project_name>/emotion-mining-pilot/data/generated_llama3.1-8b_fewshot_sample_ids.jsonl",type=str,help="path to source file")
+    parser.add_argument("--output_path",type=str,default="/scratch/<project_name>/emotion-mining-pilot/results")
     parser.add_argument("--test",action="store_true")
     args = parser.parse_args()
     # oxford dictionary: 2,3,5,6,7,8,9,10,12,13,14,15,18,20,21,23,24,27,28,30,32 

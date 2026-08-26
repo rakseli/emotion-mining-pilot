@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional
 # Sampling utilities
 # ----------------------------
 
-_EXAMPLE_PATH="/scratch/project_2017000/emotion-mining-pilot/data/example_notes_short.jsonl"
+_EXAMPLE_PATH="/scratch/<project_name>/emotion-mining-pilot/data/example_notes_short.jsonl"
 
 
 def choice_weighted(rng: np.random.Generator, values, probs):
